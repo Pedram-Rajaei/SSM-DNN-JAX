@@ -8,7 +8,7 @@
 
 Deep networks struggle on neuroscience and clinical data: datasets are small, and the signals are noisy and non-stationary. SSM-DNN addresses this by placing a **state-space model (SSM)** in front of a **deep neural network (DNN)**. The SSM infers a smooth latent trajectory from noisy observations, and the DNN decodes the participant's label from that trajectory. The two parts are trained jointly with an **Expectation–Maximization (EM)** loop driven by **sequential Monte Carlo (particle filtering)**.
 
-This repository is a JAX rewrite of the method from our IEEE EMBC 2025 paper ([original repository](https://github.com/Pedram-Rajaei/SSM-DNN)).
+This repository is a JAX rewrite of the method from our IEEE EMBC 2025 paper.
 
 ---
 
