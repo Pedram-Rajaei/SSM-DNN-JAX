@@ -22,9 +22,9 @@ class State:
     D : jnp.ndarray
         Observation offset, shape (dim_obs,).
     Q : jnp.ndarray
-        Observation noise variance (as a 1-element array).
+        Process (state) noise variance (as a 1-element array).
     R : jnp.ndarray
-        State noise variance (as a 1-element array).
+        Observation noise variance (as a 1-element array).
     R0 : jnp.ndarray
         Initial state variance (as a 1-element array).
     dim_state : int
