@@ -1,3 +1,7 @@
+import numpy as np
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+
 def split_data_em(y: np.ndarray,
                   labels: np.ndarray,
                   test_size: int = 4):
