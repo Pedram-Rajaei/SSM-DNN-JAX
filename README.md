@@ -1,144 +1,118 @@
-# JAX-based implementation of structured state-space models combined with deep neural networks for scalable and interpretable time-series modeling(SSM-DNN-JAX)
-## Introduction
+# SSM-DNN-JAX
 
-A fast, differentiable implementation of State-Space Models combined with Deep Neural Networks (SSM-DNN) using [JAX](https://github.com/jax-ml/jax) for accelerated and scalable computation.
+**A JAX implementation of SSM-DNN: a deep-network decoder with an embedded state-space layer, trained with particle filtering and EM, for small and noisy biobehavioral time series.**
 
-This repository extends the original [SSM-DNN](https://github.com/Pedram-Rajaei/SSM-DNN) implementation by leveraging JAX's high-performance automatic differentiation and parallelization capabilities. The resulting framework supports efficient training and inference for high-dimensional, temporally structured data.
+[![Paper](https://img.shields.io/badge/IEEE%20EMBC-2025-blue)](https://doi.org/10.1109/EMBC58623.2025.11254746)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](License)
+![JAX](https://img.shields.io/badge/JAX-Flax%20%7C%20Optax-orange)
 
----
+Deep networks struggle on neuroscience and clinical data: datasets are small, and the signals are noisy and non-stationary. SSM-DNN addresses this by placing a **state-space model (SSM)** in front of a **deep neural network (DNN)**. The SSM infers a smooth latent trajectory from noisy observations, and the DNN decodes the participant's label from that trajectory. The two parts are trained jointly with an **Expectation–Maximization (EM)** loop driven by **sequential Monte Carlo (particle filtering)**.
 
-## What's New in SSM-DNN-JAX?
-
-- **JAX Backend**: Full rewrite of computational routines using JAX for GPU/TPU acceleration and vectorized operations.
-- **Speed & Efficiency**: Up to **10× speed improvement** in training and inference compared to the NumPy-based implementation.
-- **Clean Modular Design**: Reorganized code structure for easier experimentation and extension.
-- **Expanded Functionality**:
-  - EM + SMC particle-based inference
-  - GP-based interpolation
-  - Multivariate support
+This repository is a JAX rewrite of the method from our IEEE EMBC 2025 paper ([original repository](https://github.com/Pedram-Rajaei/SSM-DNN)).
 
 ---
 
-## Project Overview
+## How it works
 
-State-Space Models (SSMs) are powerful tools for modeling **latent dynamics in time series**. By combining SSMs with **deep neural network encoders and decoders**, this framework learns both **interpretable latent dynamics** and **rich observation mappings**. For more details on the modular structure of this approach, please refer [here](https://github.com/Pedram-Rajaei/SSM-DNN/tree/main/Docs).
+```
+noisy reaction times y_1:T
+          │
+          ▼
+┌───────────────────────────┐   E-step: particle filter
+│ State-space model         │     (jax.lax.scan over time,
+│ x_t = A x_{t-1} + B + w_t │      jax.vmap over particles and trials)
+│ y_t = C x_t + D + v_t     │   M-step: closed-form update of noise Q
+└───────────────────────────┘
+          │  particle trajectories x_1:T
+          ▼
+┌───────────────────────────┐   multitaper spectrum of each trajectory,
+│ Spectral features         │   restricted to the low-frequency band
+└───────────────────────────┘   where task rhythms live
+          │
+          ▼
+┌───────────────────────────┐   Flax 1D-CNN (2 conv layers + max-pooling),
+│ 1D-CNN decoder            │   trained with Optax Adam; its class
+└───────────────────────────┘   probabilities re-weight the particles
+          │                     at every EM iteration
+          ▼
+   label prediction
+```
 
-The JAX-based version maintains the original SSM-DNN architecture but improves:
+**Implementation highlights**
 
-- Execution speed (via `jit` compilation and `vmap`)
-- Scalability to higher dimensions
-- Differentiability of all components
+- **Particle filter in pure JAX:** time recursion with `jax.lax.scan`, batching over particles and trials with `jax.vmap`, and data-dependent branches with `jax.lax.cond`.
+- **Label-guided resampling:** the CNN's predicted class probabilities are used as particle weights, coupling the latent-state estimate to the decoding task.
+- **Flax + Optax decoder:** a 1D-CNN with a `jax.jit`-compiled training step.
+- **Evaluation:** k-fold cross-validation with per-fold and aggregated ROC/AUC, accuracy and confusion matrices.
 
 ---
 
-<article>
-  <section>
-    <h3>Structure</h3>
-    <pre><code>
+## Application: Brief Death Implicit Association Test (BDIAT)
+
+<img src="Images/AIT_Task.png" alt="BDIAT task" width="700">
+
+Participants complete 360 trials (18 blocks of 20) of a Death Implicit Association Test while reaction times are recorded. Each participant's 360-trial reaction-time series is one sequence, labeled by group. The SSM acts as an adaptive smoother over the reaction times, and the CNN decodes the group label. See [Data_Description.md](Data_Description.md) for the full protocol.
+
+> **Data availability:** the clinical data were collected under IRB approval and are not included in this repository.
+
+| | |
+|---|---|
+| ![Particle filtering](Images/SSM.png) | ![Classification](Images/CNN.png) |
+| Particle trajectories recover the underlying pattern in noisy reaction times. | Output of the CNN decoder trained on particle-filtered trajectories. |
+
+---
+
+## Repository structure
+
+```
 SSM-DNN-JAX/
-├── Data_Description.md/                            # Real dataset used
-├── Neural_Network_for_Classification_Task.py/      # Core nueral network model definitions (CNN)
-├── Latent_State_Inference.py/                      # EM algorithm, SMC filtering
-├── utils.py/                                       # Helper functions
-├── Evaluate_Metric.py/                             # Evaluation functions
-├── main.py                                         # Main training and evaluation script
-└── License.md                                      # License
-└── Contribution.md                                 # Contriboution to this project
-└── README.md                                       # This file
-    </code></pre>
-  </section>
+├── Main.py                                    # Cross-validated training and evaluation
+├── Latent_State_Inference.py                  # State dataclass, particle filter, EM (E- and M-steps)
+├── Neural_Network_for_Classification_Task.py  # Flax 1D-CNN, jitted train step, CNN-guided resampling
+├── Evaluate_Metric.py                         # Test-set evaluation (probabilities, confusion matrix)
+├── Utiles.py                                  # Data splitting, class balancing, multitaper spectra, plotting
+├── Data_Description.md                        # Task and dataset description
+└── Images/                                    # Figures
+```
 
-  <section>
-    <h3>Installation</h3>
-    <pre><code class="language-bash">
-git clone https://github.com/Pedram-Rajaei/SSM-DNN-JAX.git
-cd SSM-DNN-JAX
-pip install -r requirements.txt
-    </code></pre>
-  </section>
-</article>
+## Code status
 
----
-<h2>Code Example(Real Data Applications)</h2>
+This is a research snapshot of the modeling pipeline, exported from the Colab notebook used in the study. The scripts show the full method, but the clinical data are not public, so they are not meant to run end-to-end out of the box. The [Colab notebook](https://colab.research.google.com/drive/10Y5nb0CLcVjm37g2VrAfuHTNNgykV53w?usp=sharing) is the best place to follow the workflow step by step.
 
-<article id="example-1">
-<h3>Brief Death Implicit Association Task (BDIAT)</h3>
-<p>
-  In this study, we demonstrate the application of the SSM-DNN framework to behavioral data collected from the D-IAT task. Each observation consists of reaction time (RT) data recorded across 360 sequential trials. The dataset includes 46 participants, each stratified into either the High Suicidal Ideation (High SI) or Low Suicidal Ideation (Low SI) group based on ecological momentary assessment scores. For modeling purposes, we treat each participant’s data as an individual trial, resulting in 23 trials in total, with each trial comprising 360 time-ordered RT samples. Each trial is labeled according to the participant’s SI group—High SI or Low SI.
-</p>
-<p>The observation dimension is one, and we model the latent state process using a random walk. In this framework, the state-space model (SSM) functions as an adaptive smoother over the observed reaction times. The deep neural network (DNN) component is implemented as a one-dimensional convolutional neural network (1D-CNN) consisting of two convolutional layers followed by max-pooling. To evaluate model performance, we use a cross-validation scheme that assesses overall prediction accuracy, as well as specificity and sensitivity. We compare the SSM-DNN model against a baseline DNN (without the SSM component) and alternative state of art modeling frameworks such as pre trained ResNet. Our results show that SSM-DNN achieves higher predictive accuracy while maintaining a better balance between specificity and sensitivity. A detailed breakdown of the SSM-DNN implementation steps is provided here:</p>
-<ul>
-    <li><a href="Neural_Network_for_Classification_Task.py">Neural Network for Classification Task</a>: Demonstrates how to implement and train a neural network for EEG data classification and visualize its performance.
-    </li>
-    <li>
-        <a href="Latent_State_Inference.py">Latent State Inference</a>: Showcases the particle filter and EM algorithm in action.
-    </li>
-    <li>
-        <a href="Evaluate_Metric.py">Evaluate Metric</a>: Evaluates model performance using accuracy, ROC curves, and AUC.
-    </li>
-</ul>
-</article>
+Dependencies: `jax`, `flax`, `optax`, `numpy`, `scipy`, `scikit-learn`, `matplotlib`.
 
-The coresponding notebook can be found in [here](https://colab.research.google.com/drive/10Y5nb0CLcVjm37g2VrAfuHTNNgykV53w?usp=sharing).
+```bash
+git clone https://github.com/Pedram-Rajaei/SSN-DNN-JAX.git
+pip install jax flax optax numpy scipy scikit-learn matplotlib
+```
 
-## Conclusion
-
-This implementation integrates SMC-based state estimation with deep learning (CNNs) in JAX, enhancing particle filtering accuracy. The FFT transformation further improves CNN performance by leveraging frequency-domain insights. As observed in Fig. 1, the particles successfully capture the underlying pattern of the dataset. However, Fig. 2 reveals challenges in accurately classifying the labels, indicating that further refinement is needed to improve the classification performance.
-
-<figure>
-  <img src="Images/SSM.png" alt="Description" width="400">
-  <figcaption>Figure 1: The particles successfully capture the underlying pattern hidden within the noisy observations, effectively filtering out noise to reveal the true structure of the dataset.</figcaption>
-</figure>
-
-<figure>
-  <img src="Images/CNN.png" alt="Description" width="400">
-  <figcaption>Figure 2: The CNN trained on particle-filtered data accurately predicts class labels, demonstrating strong classification performance with minimal misclassification </figcaption>
-</figure>
+The multitaper spectrogram routine in `Utiles.py` is adapted from the [Prerau Lab multitaper toolbox](https://github.com/preraulab/multitaper_toolbox).
 
 ---
 
-<h2>Citation</h2>
-<p>If you would use SSM-DNN in your research, please cite the following research papers:</p>
-<pre><code>@@article{Paper1,
-  title = {Novel techniques for neural data analysis},
-  author = {Smith, J. and Doe, J.},
-  journal = {Google Scholar},
-  year = {2023},
-  url = {https://scholar.google.com/citations?view_op=view_citation&hl=en&user=M8rzdnwAAAAJ&sortby=pubdate&citation_for_view=M8rzdnwAAAAJ:NXb4pA-qfm4C},
-  note = {Accessed: 2025-01-14}
+## Citation
+
+If you use this code, please cite:
+
+```bibtex
+@inproceedings{rajaei2025ssmdnn,
+  title     = {Robust {DNN}-based Decoder Model with an Embedded State-Space Model Layer},
+  author    = {Rajaei, Pedram and Kallam, Pavan and Garcia, Benito and Yadav, Shreya and McInnes, Aaron and Brown, Blair and Freedman, Miriam and Bronstein, Michael and Goodman Keiser, Melanie D. and Widge, Alik S. and Yousefi, Ali},
+  booktitle = {2025 47th Annual International Conference of the IEEE Engineering in Medicine and Biology Society (EMBC)},
+  pages     = {1--6},
+  year      = {2025},
+  doi       = {10.1109/EMBC58623.2025.11254746}
 }
-@article{Paper2,
-  title = {Advances in deep learning for neuroscience},
-  author = {Brown, A. and Taylor, K.},
-  journal = {Google Scholar},
-  year = {2022},
-  url = {https://scholar.google.com/citations?view_op=view_citation&hl=en&user=jieyeRUAAAAJ&sortby=pubdate&citation_for_view=jieyeRUAAAAJ:NDuN12AVoxsC},
-  note = {Accessed: 2025-01-14}
-}
-@article{Paper3,
-  title = {State-space models in neuroscience},
-  author = {Doe, J. and Smith, R.},
-  journal = {PubMed},
-  year = {2020},
-  url = {https://pubmed.ncbi.nlm.nih.gov/31947169/},
-  note = {Accessed: 2025-01-14}
-}</code></pre>
+```
 
----
+## Acknowledgments
 
-<h2>Collaboration and Contribution</h2>
-<p>We welcome your contribution in this research! Please check <a href="Contribution.md">here</a> for guidelines.</p>
+This work was partially supported by the Defense Advanced Research Projects Agency (DARPA) under cooperative agreement #N660012324016. The content does not necessarily reflect the position or policy of the Government, and no official endorsement should be inferred. We thank our collaborators at the University of Minnesota and Intheon. This work was also supported by startup funds from the University of Houston.
 
----
+## License
 
-<h2>License</h2>
-<p>
-    This project is licensed under the MIT License. See the <a href="License">license</a> file for details.
-</p>
+MIT. See [License](License).
 
----
+## Contact
 
-<h2>Acknowledgments</h2>
-<p>
-    This work was partially supported by the Defense Advanced Research Projects Agency (DARPA) under cooperative agreement #N660012324016. The content of this information does not necessarily reflect the position or policy of the Government, and no official endorsement should be inferred. We appreciate our research collaborators from UMN, Intheon, and others. This work was also supported by startup funds from the University of Houston. Special thanks go to our research collaborators and colleagues who contributed by providing data and offering thoughtful comments to refine our modeling framework.
-</p>
+Pedram Rajaei, Department of Biomedical Engineering, University of Houston · prajaei@cougarnet.uh.edu
