@@ -82,7 +82,7 @@ This is a research snapshot of the modeling pipeline, exported from the Colab no
 Dependencies: `jax`, `flax`, `optax`, `numpy`, `scipy`, `scikit-learn`, `matplotlib`.
 
 ```bash
-git clone https://github.com/Pedram-Rajaei/SSN-DNN-JAX.git
+git clone https://github.com/Pedram-Rajaei/SSM-DNN-JAX.git
 pip install jax flax optax numpy scipy scikit-learn matplotlib
 ```
 
